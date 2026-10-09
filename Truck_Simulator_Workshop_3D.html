@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Truck Simulator Workshop — Prototype 3D</title>
+<style>
+:root{color-scheme:dark}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#101820;font-family:system-ui,-apple-system,Arial,sans-serif;touch-action:none}
+#game{position:fixed;inset:0}
+canvas{display:block;width:100%;height:100%}
+#hud{position:fixed;inset:0;pointer-events:none;color:#fff;text-shadow:0 2px 5px #000}
+.panel{background:rgba(5,12,18,.72);border:1px solid rgba(255,255,255,.2);border-radius:14px;padding:9px 12px;backdrop-filter:blur(6px)}
+#brand{position:absolute;top:env(safe-area-inset-top,10px);left:10px;font-weight:800;font-size:14px;letter-spacing:.4px}
+#status{position:absolute;top:env(safe-area-inset-top,10px);right:10px;text-align:right;font-size:12px}
+#speed{font-size:28px;font-weight:850;line-height:1.1}
+#help{position:absolute;top:68px;left:50%;transform:translateX(-50%);font-size:11px;white-space:nowrap;opacity:.9}
+#controls{position:absolute;bottom:calc(env(safe-area-inset-bottom,0px) + 14px);left:0;right:0;display:flex;justify-content:space-between;align-items:end;padding:0 14px;gap:12px}
+.cluster{display:flex;gap:9px;align-items:end}
+button{pointer-events:auto;color:#fff;background:rgba(9,18,27,.78);border:1px solid rgba(255,255,255,.35);border-radius:16px;min-width:60px;min-height:58px;padding:8px;font-size:12px;font-weight:750;box-shadow:0 4px 14px #0005;touch-action:none}
+button:active,button.active{background:rgba(35,119,170,.92);transform:scale(.97)}
+button.wide{min-width:72px;min-height:70px}
+button.accent{background:rgba(157,48,34,.85)}
+#gear{font-size:19px}
+#message{position:absolute;bottom:calc(env(safe-area-inset-bottom,0px) + 100px);left:50%;transform:translateX(-50%);font-size:11px;white-space:nowrap;opacity:.85}
+@media (orientation:landscape){#controls{padding:0 20px}button{min-width:66px;min-height:60px}#help{top:54px}}
+</style>
+</head>
+<body>
+<div id="game"></div>
+<div id="hud">
+ <div id="brand" class="panel">🚛 TRUCK SIMULATOR WORKSHOP <span style="color:#ff6858">3D</span></div>
+ <div id="status" class="panel"><div id="speed">0 <span style="font-size:12px">km/h</span></div><div>Régime <span id="rpm">650</span> tr/min</div><div>Boîte <span id="gear">N</span></div></div>
+ <div id="help" class="panel">Prototype 3D • touche et maintiens les commandes</div>
+ <div id="message" class="panel">Camion de démonstration — modèle 3D à améliorer</div>
+ <div id="controls">
+  <div class="cluster">
+   <button id="left">◀<br>GAUCHE</button>
+   <button id="right">DROITE<br>▶</button>
+   <button id="camera">CAMÉRA</button>
+  </div>
+  <div class="cluster">
+   <button id="gearBtn">VITESSE<br><span id="gearBtnText">D</span></button>
+   <button id="brake" class="wide accent">FREIN</button>
+   <button id="gas" class="wide">ACCÉLÉRER<br>▲</button>
+  </div>
+ </div>
+</div>
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+
+const host=document.querySelector('#game');
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x9bc7e5);
+scene.fog=new THREE.Fog(0x9bc7e5,90,330);
+const camera=new THREE.PerspectiveCamera(68,innerWidth/innerHeight,.1,600);
+const renderer=new THREE.WebGLRenderer({antialias:true, powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(devicePixelRatio,1.6));
+renderer.setSize(innerWidth,innerHeight);
+renderer.shadowMap.enabled=true;
+renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+renderer.outputColorSpace=THREE.SRGBColorSpace;
+host.appendChild(renderer.domElement);
+
+scene.add(new THREE.HemisphereLight(0xeaf6ff,0x68745b,2.0));
+const sun=new THREE.DirectionalLight(0xfff0d6,2.3);
+sun.position.set(-25,50,20);sun.castShadow=true;scene.add(sun);
+
+const mat=(color,roughness=.8,metalness=0)=>new THREE.MeshStandardMaterial({color,roughness,metalness});
+const grassMat=mat(0x557b45), asphaltMat=mat(0x343a40), lineMat=mat(0xf2f0d8), truckRed=mat(0xb92f27,.48), dark=mat(0x172029,.45), glass= new THREE.MeshStandardMaterial({color:0x8db5c8,roughness:.2,metalness:.1,transparent:true,opacity:.72}), tireMat=mat(0x17191b), rimMat=mat(0xaab4bc,.35,.65);
+const ground=new THREE.Mesh(new THREE.PlaneGeometry(1000,1000),grassMat);ground.rotation.x=-Math.PI/2;ground.position.y=-.14;ground.receiveShadow=true;scene.add(ground);
+const road=new THREE.Mesh(new THREE.PlaneGeometry(15,1000),asphaltMat);road.rotation.x=-Math.PI/2;road.position.y=-.08;road.receiveShadow=true;scene.add(road);
+for(let z=-490;z<500;z+=12){const dash=new THREE.Mesh(new THREE.BoxGeometry(.16,.025,5),lineMat);dash.position.set(0,-.045,z);scene.add(dash)}
+for(const x of [-7.1,7.1]){const edge=new THREE.Mesh(new THREE.BoxGeometry(.12,.03,1000),lineMat);edge.position.set(x,-.04,0);scene.add(edge)}
+// Roadside trees and low hills
+for(let i=0;i<95;i++){
+ const z=-460+i*10+(Math.random()*4), side=Math.random()<.5?-1:1, x=side*(12+Math.random()*24), h=3+Math.random()*7;
+ const trunk=new THREE.Mesh(new THREE.CylinderGeometry(.18,.28,h*.32,6),mat(0x594331));trunk.position.set(x,h*.16,z);scene.add(trunk);
+ const crown=new THREE.Mesh(new THREE.ConeGeometry(1.4+Math.random()*1.2,h*.7,7),mat([0x2d5a38,0x3c6b3f,0x466e43][i%3]));crown.position.set(x,h*.58,z);crown.castShadow=true;scene.add(crown);
+}
+// A simple articulated-looking European tractor unit made from primitives
+const truck=new THREE.Group();scene.add(truck);
+function cube(parent,w,h,d,material,x,y,z){const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),material);m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;parent.add(m);return m}
+cube(truck,2.45,.72,4.2,dark,0,1.05,.2); // chassis
+cube(truck,2.5,.16,4.6,mat(0x343b42,.5,.5),0,.78,.15);
+cube(truck,2.25,2.55,1.95,truckRed,0,2.25,-1.15); // cab
+cube(truck,2.02,1.12,.09,glass,0,2.78,-2.145); // windshield
+cube(truck,2.06,.12,.12,dark,0,3.35,-2.08); // visor
+cube(truck,2.12,.12,.16,mat(0xd6d8d6,.35,.4),0,1.25,-2.18); // bumper
+cube(truck,.46,.25,.08,mat(0xffe7a0,.2),-.72,1.34,-2.27);
+cube(truck,.46,.25,.08,mat(0xffe7a0,.2),.72,1.34,-2.27);
+cube(truck,2.5,.22,2.7,mat(0x7a838b,.5,.5),0,1.16,1.9); // fifth wheel/deck
+// side windows
+for(const x of [-1.135,1.135]) cube(truck,.06,.83,.88,glass,x,2.76,-.85);
+const wheels=[];
+for(const z of [-1.45,1.35,2.1]) for(const x of [-1.28,1.28]){
+ const wheel=new THREE.Mesh(new THREE.CylinderGeometry(.48,.48,.28,20),tireMat);
+ wheel.rotation.z=Math.PI/2;wheel.position.set(x,.53,z);wheel.castShadow=true;truck.add(wheel);wheels.push(wheel);
+ const rim=new THREE.Mesh(new THREE.CylinderGeometry(.25,.25,.292,16),rimMat);rim.rotation.z=Math.PI/2;rim.position.set(x*1.005,.53,z);truck.add(rim);
+}
+const mirrors=[];
+for(const x of [-1.35,1.35]){
+ const arm=cube(truck,.08,.08,.48,dark,x,2.72,-1.35);
+ const mirror=cube(truck,.16,.42,.12,dark,x*1.12,2.72,-1.57);mirrors.push(mirror);
+}
+// small exhaust stack
+const exhaust=new THREE.Mesh(new THREE.CylinderGeometry(.09,.12,1.25,10),mat(0x5d6267,.35,.75));exhaust.position.set(-.92,2.2,.6);truck.add(exhaust);
+truck.position.set(0,0,4);
+
+let speed=0, steer=0, heading=0, cameraMode=0, gearMode=0, throttle=false, braking=false, left=false,right=false,last=performance.now();
+const speedEl=document.querySelector('#speed'),rpmEl=document.querySelector('#rpm'),gearEl=document.querySelector('#gear'),gearBtnText=document.querySelector('#gearBtnText');
+function hold(id, setter){const el=document.getElementById(id);const down=e=>{e.preventDefault();setter(true);el.classList.add('active')};const up=e=>{e.preventDefault();setter(false);el.classList.remove('active')};el.addEventListener('pointerdown',down);['pointerup','pointercancel','pointerleave'].forEach(n=>el.addEventListener(n,up))}
+hold('gas',v=>throttle=v);hold('brake',v=>braking=v);hold('left',v=>left=v);hold('right',v=>right=v);
+document.querySelector('#camera').addEventListener('click',()=>cameraMode=(cameraMode+1)%3);
+document.querySelector('#gearBtn').addEventListener('click',()=>{gearMode=(gearMode+1)%3;gearBtnText.textContent=['D','N','R'][gearMode];gearEl.textContent=['D','N','R'][gearMode]});
+function animate(now){
+ requestAnimationFrame(animate);const dt=Math.min((now-last)/1000,.04);last=now;
+ const direction=gearMode===2?-1:gearMode===1?0:1;
+ if(throttle&&direction!==0)speed+=direction*8*dt;
+ if(braking)speed*=Math.max(0,1-3.8*dt);else if(!throttle)speed*=Math.max(0,1-.23*dt);
+ speed=THREE.MathUtils.clamp(speed,-18,36);
+ if(Math.abs(speed)<.08)speed=0;
+ const steeringInput=(right?1:0)-(left?1:0);
+ steer=THREE.MathUtils.damp(steer,steeringInput,.09,dt);
+ heading-=steer*speed*.006*dt;
+ truck.rotation.y=heading;
+ truck.position.x-=Math.sin(heading)*speed*dt;
+ truck.position.z-=Math.cos(heading)*speed*dt;
+ // keep vehicle approximately on the road
+ truck.position.x=THREE.MathUtils.clamp(truck.position.x,-5.5,5.5);
+ wheels.forEach(w=>w.rotation.x+=speed*dt*1.5);
+ const kmh=Math.round(Math.abs(speed)*3.6);
+ speedEl.innerHTML=`${kmh} <span style="font-size:12px">km/h</span>`;
+ rpmEl.textContent=Math.round(650+Math.abs(speed)*95+(throttle?350:0));
+ if(cameraMode===0){ // chase camera
+  const offset=new THREE.Vector3(0,4.2,9).applyAxisAngle(new THREE.Vector3(0,1,0),heading);
+  camera.position.lerp(truck.position.clone().add(offset),.09);
+  camera.lookAt(truck.position.clone().add(new THREE.Vector3(0,1.7,-1).applyAxisAngle(new THREE.Vector3(0,1,0),heading)));
+ }else if(cameraMode===1){ // driver's viewpoint
+  const pos=new THREE.Vector3(0,2.95,-1.72).applyAxisAngle(new THREE.Vector3(0,1,0),heading).add(truck.position);
+  camera.position.lerp(pos,.18);
+  const look=new THREE.Vector3(0,2.65,-14).applyAxisAngle(new THREE.Vector3(0,1,0),heading).add(truck.position);
+  camera.lookAt(look);
+ }else{ // front three-quarter view
+  const offset=new THREE.Vector3(5,3.2,-7).applyAxisAngle(new THREE.Vector3(0,1,0),heading);
+  camera.position.lerp(truck.position.clone().add(offset),.08);camera.lookAt(truck.position.clone().add(new THREE.Vector3(0,1.3,0)));
+ }
+ renderer.render(scene,camera);
+}
+requestAnimationFrame(animate);
+addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,1.6))});
+</script>
+</body>
+</html>
